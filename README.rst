@@ -12,7 +12,7 @@ package is pysindy_, for scalar coordinates.
 In matSINDy we extend this approach to symbolic variables which are dense, 
 low-dimension (typically 3 by 3) **matrices**.
 
-> Work in progress!
+>> Work in progress!
 
 
 
@@ -64,6 +64,4 @@ pysindy_
 
 References
 ----------
-1. E. Rognin, N. Willis-Fox, T. A. Aljohani, R. Daly,
-   *A multiscale model for the rupture of linear polymers in strong flows.*
-   Journal of Fluid Mechanics 848, 722–742 (2018).
+
