@@ -4,6 +4,7 @@ def make_window(width, which='rectangular'):
     # Test function for the weak formulation
     # --------------------------------------
     # width including zeros (zeros are needed for integration/differentation consistancy)
+    width += 2
 
     if which=='rectangular':
         window = np.ones(width)

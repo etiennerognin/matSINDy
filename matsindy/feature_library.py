@@ -140,16 +140,9 @@ class FeatureLibrary:
         feature_functions = []
         feature_names = []
         degrees = {}
+
         for f1, name1 in zip(self.feature_functions, self.feature_names):
             for f2, name2 in zip(other.feature_functions, other.feature_names):
-                if other.output_kind == 'matrix':
-                    # We need to arrange broadcasting
-                    feature_functions.append(lambda variables, f1=f1, f2=f2:
-                                             f1(variables)[:, None, None]
-                                             * f2(variables))
-                else:
-                    feature_functions.append(lambda variables, f1=f1, f2=f2:
-                                             f1(variables)*f2(variables))
                 if name1 == name2:
                     # Small cosmetics
                     name12 = f"({name1})²"
@@ -159,9 +152,25 @@ class FeatureLibrary:
                     else:
                         name2m = name2
                     name12 = self.MUL_SYMBOL.join([name1, name2m])
-                feature_names.append(name12)
-                degrees[name12] = _sum_degrees(self.degrees[name1],
-                                               other.degrees[name2])
+
+                # Check is the function is already there by commutation
+                # Note: this will not cover all cases!
+                name21 = self.MUL_SYMBOL.join([name2, name1])
+                if name21 not in feature_names:
+                    if other.output_kind == 'matrix':
+                        # We need to arrange broadcasting
+                        feature_functions.append(lambda variables,
+                                                 f1=f1, f2=f2:
+                                                 f1(variables)[:, None, None]
+                                                 * f2(variables))
+                    else:
+                        feature_functions.append(lambda variables,
+                                                 f1=f1, f2=f2:
+                                                 f1(variables)*f2(variables))
+
+                    feature_names.append(name12)
+                    degrees[name12] = _sum_degrees(self.degrees[name1],
+                                                   other.degrees[name2])
 
         return FeatureLibrary(output_kind,
                               feature_functions=feature_functions,

@@ -1,8 +1,9 @@
 import numpy as np
 
+
 class model:
     """Model describing input data given a certain library.
-    
+
     Parameters
     ----------
     coefficients : np.ndarray
@@ -11,26 +12,27 @@ class model:
         Average error from the optimisation algorithm.
     cv : float
         Average cross-validation error on a testing data set.
-    score : float
+    simulation_error : float
         More general cross-validation score, for example based on expensive
         simulations of the model.
     window_width : str
-        Effective width of the test function used for the weak formulation, 
+        Effective width of the test function used for the weak formulation,
         if applicable.
     label : str
         Label for the model. For example, for plotting purposes.
     coefstd : np.ndarray
-        Standard deviation of coefficients. 
+        Standard deviation of coefficients.
     num_terms : int
         Number of active (non-zero or non-NaN) terms in the model.
-        
     """
 
-    def __init__(self, coefficients=None, error=None, cv=None, score=None, window_width=None, label=None, coefstd=None):
+    def __init__(self,
+                 coefficients=None, error=None, cv=None, simulation_error=None,
+                 window_width=None, label=None, coefstd=None):
         self.coefficients = coefficients
         self.error = error
         self.cv = cv
-        self.score = score
+        self.simulation_error = simulation_error
         self.window_width = window_width
         self.label = label
         self.coefstd = coefstd
@@ -38,21 +40,20 @@ class model:
             self.num_terms = np.sum(~np.isnan(coefficients))
         else:
             self.num_terms = None
-        
-        
+
     def print(self, library):
         """Print model to shell.
-        
+
         Parameters
         ----------
         library: library
             A library object used to fit the model.
-            
+
         Raises
         ------
         RuntimeError
             If feature names and model coefficients don't have the same
-            length   
+            length
         """
         if self.coefficients.size != len(library.feature_names):
             raise RuntimeError('Model and library sizes not matching.')
@@ -60,24 +61,41 @@ class model:
             print(f"Regression label: {self.label}")
         if self.num_terms:
             print(f"Number of active terms: {self.num_terms}")
-        for i,(coef,name) in enumerate(zip(self.coefficients,library.feature_names)):
+        for i, (coef, name) in enumerate(zip(self.coefficients,
+                                             library.feature_names)):
             if not np.isnan(coef):
-                if self.coefstd is None: 
-                    print("({})\t{:+.4f} {}".format(i,coef,name))
+                if self.coefstd is None:
+                    print("({})\t{:+.4f} {}".format(i, coef, name))
                 else:
-                    print("({})\t{:+.4f} ±{:.4f} {}".format(i,coef,self.coefstd[i],name))
-            
-    
+                    print("({})\t{:+.4f} ±{:.4f} {}".format(i, coef,
+                                                            self.coefstd[i],
+                                                            name))
+
+    def predict(self, X):
+        """Compute target y, given features X, using fitted coefficients.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            The array of features.
+
+        Returns
+        -------
+        y_hat: np.ndarray
+            Target according to the current model.
+        """
+        return np.nansum(X*self.coefficients, axis=1)
+
     def compute_cv(self, X, y):
         """Compute an average cross validation error based on coefs table.
-        
+
         Parameters
         ----------
         X : np.ndarray
             The array of features evaluated on the test set.
         y : np.ndarray
             Test data set.
-            
+
         Returns
         -------
         float
@@ -85,105 +103,105 @@ class model:
         cv = np.average(np.square(y-np.nansum(X*self.coefficients, axis=1)))
         self.cv = cv
         return cv
-    
-    
-    def simulate(self, data, U, dt, library, method='Euler', return_trajectory=True):
+
+    def simulate(self, observable_name,
+                 data, library, method='Euler', return_trajectory=True):
         """Simulate the evolution of `data` under control `U`, and compute
         a simulation score.
-        
+
         Parameters
         ----------
-        data, U : array_like
-            Data and control to simulate.
-        dt : float
-            Value of time step. Uniform time step is assumed in the data.
-        library : library
+        observable_name : Observable which is going to be simulated.
+        data : dict
+            Dataset which can be used by feature functions.
+        library : library object
             The library of feature functions
         method : str, default 'Euler'
             Integration scheme. Forward Euler by default (Itô compatible).
-            If not 'Euler', calls `solve_ivp` from `scipy.integrate` and 
+            If not 'Euler', calls `solve_ivp` from `scipy.integrate` and
             tries to use it with the named method. For example, 'RK45' for
             Explicit Runge-Kutta method of order 5(4).
         return_trajectory : bool, default True
             Return trajectory (the simulation) if True.
-            
+
         Returns
         -------
-        data_sim : array_like
-            Simulated data, same shape as `data`, only if return_trajectory==True
-        score : float
-            Simulation score defined as average square error. 
-            Also stored in self.score.
+        observable_sim : array_like
+            Simulated data, same shape as `data[observable_name]`, only if
+            `return_trajectory` is True.
+        simulation_error : float
+            Simulation score defined as average square error.
+            Also stored in self.simulation_error.
         """
-        
+
         # Extract feature functions
-        coefs_features = list([coef, feature] for coef, feature in zip(self.coefficients, library.feature_functions) if not np.isnan(coef))
-        
-        time_base = np.arange(U.shape[0])*dt
-        
+        coefs_features = list([coef, feature] for coef, feature in
+                              zip(self.coefficients, library.feature_functions)
+                              if not np.isnan(coef))
+
         # Create a callable which returns the control at time t
-        from scipy.interpolate import interp1d
-        Ui = interp1d(time_base, U, kind='linear', axis=0, 
-                      bounds_error=False, fill_value=(U[0],U[-1]),
-                      assume_sorted=True)
-        
+        # from scipy.interpolate import interp1d
+        # Ui = interp1d(time_base, U, kind='linear', axis=0,
+        #              bounds_error=False, fill_value=(U[0], U[-1]),
+        #              assume_sorted=True)
+
         # Define callable rate of change
-        def ddt(t, y):
-            # Note the heavy use of transpose .T to comply with solve_ivp use.
-            # First evaluate U:
-            Ut = Ui(t)
-            if Ut.ndim == 1:
-                Ut = Ut.reshape((1,9))       
-            out = np.zeros_like(y.T)
+        def ddt(it):
+            data_it = {}
+            for key, value in data.items():
+                if key != 'features':
+                    data_it[key] = value[it].reshape((1, *value[it].shape))
+            out = np.zeros_like(data_it[observable_name])
             for coef, feature in coefs_features:
-                    out += coef*feature(y.T,Ut)
-            return out.T
-        
-        if method!='Euler':
+                out += coef*feature(data_it)
+            return out
+
+        if method != 'Euler':
+            raise NotImplementedError('Please use Euler method for now.')
             # Solve using scipy integrator
-            from scipy.integrate import solve_ivp
-            sol = solve_ivp(ddt, [0, time_base[-1]], data[0], 
-                                 method=method, t_eval=time_base,
-                                 vectorized=True, max_step=dt)
-            data_sim = sol.y.T
-            
-        if method=='Euler':
-            # Use explicit first-order Euler scheme. Fast, and also makes sense if dt is the time step used in Ito MD
-            Nt = U.shape[0]
-            # Note: using solve_ivp conventions
-            data_sim = np.empty((6,Nt))
-            data_sim[:,0] = data[0]
+            # from scipy.integrate import solve_ivp
+            # sol = solve_ivp(ddt, [0, time_base[-1]], data[0],
+            #                      method=method, t_eval=time_base,
+            #                     vectorized=True, max_step=dt)
+            # data_sim = sol.y.T
+
+        # The observable is going to be overriden during the simulation because
+        # we need to pass the entire dataset to the feature functions,
+        # therefore we need to save the original value of the observable.
+        saved_observable = data[observable_name].copy()
+
+        if method == 'Euler':
+            # Use explicit first-order Euler scheme. Fast, and also makes
+            # sense if dt is the time step used in Ito molecular dynamics.
+            Nt = len(data['t'])
+            dt = np.diff(data['t'])
             for i in range(Nt-1):
-                data_sim[:,i+1] = data_sim[:,i] + dt*np.reshape(ddt(i*dt, np.reshape(data_sim[:,i],(6,1))),(6,))
-            data_sim = data_sim.T
-        
-        # Compute score
-        # Reweight according to implicit lower-triangular coefficients
-        # of symmetric matrices
-        err = (data[:,0]-data_sim[:,0])**2
-        err += 2*(data[:,1]-data_sim[:,1])**2
-        err += 2*(data[:,2]-data_sim[:,2])**2
-        err += (data[:,3]-data_sim[:,3])**2
-        err += 2*(data[:,4]-data_sim[:,4])**2
-        err += (data[:,5]-data_sim[:,5])**2
-        score = np.average(err)
-        self.score = score
-        
+                data[observable_name][i+1] = (data[observable_name][i] +
+                                              dt[i]*ddt(i))
+
+        # Swap
+        observable_sim = data[observable_name].copy()
+        data[observable_name] = saved_observable
+
+        simulation_error = np.average(np.square(observable_sim -
+                                                saved_observable))
+        self.simulation_error = simulation_error
+
         if return_trajectory:
-            return data_sim, score
+            return observable_sim, simulation_error
         else:
-            return score
-        
-        
+            return simulation_error
+
+
     def is_similar(self, other_model):
         """Check is two model are similar. Two models are similar if they
         use exactly the same features.
-        
+
         Parameters
         ----------
         other_model : model
             The model to compare with.
-        
+
         Returns
         -------
         bool
