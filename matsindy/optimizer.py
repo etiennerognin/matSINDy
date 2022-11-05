@@ -40,6 +40,46 @@ def SSR(X, y):
     return models_list
 
 
+def Ridge_SSR(X, y, alpha=0.0001):
+    """Stepwise Sparse Regressor with RIDGE regularisation.
+
+    Parameters
+    ----------
+    X : array_like
+        The matrix of features.
+    y : array_like
+        Vector to fit.
+    alpha : float, default 0.0001
+        Ridge hyperparameter, see:
+        https://scikit-learn.org/stable/modules/linear_model.html#regression
+
+    Returns
+    -------
+    list of model
+        List of models with decreasing number of active terms.
+    """
+    from sklearn.linear_model import Ridge
+    reg = Ridge(alpha=alpha, fit_intercept=False, solver='svd')
+
+    Nf = X.shape[1]
+    active_terms = np.ones(Nf, dtype=bool)
+    models_list = []
+
+    for i in range(Nf):
+        coefs = np.zeros(Nf)*np.nan
+        coefs[active_terms] = reg.fit(X[:, active_terms], y).coef_
+        error = np.average(np.square(y-np.sum(X[:, active_terms] *
+                                              coefs[active_terms], axis=1)))
+        # Record model
+        models_list.append(model(coefficients=coefs, error=error))
+
+        # Find and remove smallest coef
+        j = np.nanargmin(np.abs(coefs))
+        # print('Removing term {}.'.format(j))
+        active_terms[j] = False
+    return models_list
+
+
 def SSRD(X, y):
     """Stepwise Sparse Regressor with Decorrelation. This is a backward
     elimination process. At each step,
@@ -109,8 +149,8 @@ def SSRD(X, y):
     return models_list
 
 
-def Ridge_SSR(X, y, alpha=0.0001):
-    """Stepwise Sparse Regressor with RIDGE regularisation.
+def Ridge_SSRD(X, y, alpha):
+    """SSRD with RIDGE regularisation.
 
     Parameters
     ----------
@@ -128,24 +168,51 @@ def Ridge_SSR(X, y, alpha=0.0001):
         List of models with decreasing number of active terms.
     """
     from sklearn.linear_model import Ridge
-    reg = Ridge(alpha=alpha, fit_intercept=False)
+    reg = Ridge(alpha=alpha, fit_intercept=False, solver='svd')
 
     Nf = X.shape[1]
     active_terms = np.ones(Nf, dtype=bool)
     models_list = []
 
-    for i in range(Nf):
-        coefs = np.zeros(Nf)*np.nan
-        coefs[active_terms] = reg.fit(X[:, active_terms], y).coef_
-        error = np.average(np.square(y-np.sum(X[:, active_terms] *
-                                              coefs[active_terms], axis=1)))
+    # Correlation matrix without diagonal
+    XtX = X.T @ X
+    XtX -= np.diag(np.diag(XtX))
+
+    # Starting with full library
+    coefs = reg.fit(X, y).coef_
+    error = np.average(np.square(y-np.sum(X*coefs, axis=1)))
+
+    for i in range(Nf-1):
         # Record model
         models_list.append(model(coefficients=coefs, error=error))
 
-        # Find and remove smallest coef
-        j = np.nanargmin(np.abs(coefs))
-        # print('Removing term {}.'.format(j))
-        active_terms[j] = False
+        # Find highest correlated pair
+        beta2 = np.outer(coefs, coefs)
+        ii = np.nanargmin(XtX*beta2)
+        (j, k) = np.unravel_index(ii, XtX.shape)
+
+        # Find the smallest coef
+        L = np.nanargmin(np.abs(coefs))
+
+        # Select best option
+        error = 1e12
+        select_index = None
+        coefs = None
+        for index in (j, k, L):
+            active_terms[index] = False
+            coefs1 = np.zeros(Nf)*np.nan
+            coefs1[active_terms] = reg.fit(X[:, active_terms], y).coef_
+            error1 = np.average(np.square(y-np.sum(X[:, active_terms] *
+                                                   coefs1[active_terms],
+                                                   axis=1)))
+            if error1 < error:
+                select_index = index
+                error = error1
+                coefs = coefs1
+            active_terms[index] = True
+
+        active_terms[select_index] = False
+
     return models_list
 
 
@@ -217,7 +284,7 @@ def Ridge_STLSQ(X, y, threshold=0.01, alpha=0.0001):
         List of models with decreasing number of active terms.
     """
     from sklearn.linear_model import Ridge
-    reg = Ridge(alpha=alpha, fit_intercept=False)
+    reg = Ridge(alpha=alpha, fit_intercept=False, solver='svd')
 
     Nf = X.shape[1]
     models_list = []
@@ -293,61 +360,98 @@ def backward_elimination(X, y):
     return models_list
 
 
+def OMP(X, y, n_max=10):
+    """Orthogonal Matching Pursuit from scikit-learn.
 
-# def bagging_SSR(X, y, n_estimators=10, n_samples=0.2):
-#     """Stepwise Sparse Regressor. See SSR. At each step of the SSR,
-#     for n_estimators:
-#     1. Rows are sampled with replacement using n_samples.
-#     2. A least squares fitting is done on each estimators.
-#     3. Resulting coefficients are averaged.
-#     4. The active term with the lowest coefficient is removed.
-#
-#     Parameters
-#     ----------
-#     X : array_like
-#         The matrix of features.
-#     y : array_like
-#         Vector to fit.
-#     n_estimators : int, default 10
-#         Number of estimators for the LS regression.
-#     n_samples : {int, float}, default 0.2
-#         Number of sample to draw. If integer, then this is the number of
-#         samples, if float in [0, 1] then it is the portion of the total number
-#         of rows.
-#
-#     Returns
-#     -------
-#     list of model
-#         List of models with decreasing number of active terms.
-#     """
-#     Nf = X.shape[1]
-#     active_terms = np.ones(Nf, dtype=bool)
-#     models_list = []
-#
-#     if type(n_samples) is float:
-#         n_samples = int(n_samples*y.size)
-#
-#     idx = list(np.random.randint(y.size, size=n_samples)
-#                for i in range(n_samples))
-#
-#     for i in range(Nf):
-#         coefs = np.zeros(Nf)*np.nan
-#         coefs_table = np.zeros((n_estimators, Nf))*np.nan
-#         for k in range(n_estimators):
-#             coefs_table[k, active_terms] = np.linalg.lstsq(X[idx[k]][:, active_terms],
-#                                                            y[idx[k]], rcond=_rcond)[0]
-#
-#         coefs[active_terms] = np.average(coefs_table[:, active_terms], axis=0)
-#         error = np.average(np.square(y-np.sum(X[:, active_terms] *
-#                                               coefs[active_terms], axis=1)))
-#         # Record model
-#         models_list.append(model(coefficients=coefs, error=error))
-#
-#         # Find and remove smallest coef
-#         j = np.nanargmin(np.abs(coefs))
-#         # print('Removing term {}.'.format(j))
-#         active_terms[j] = False
-#     return models_list
+    Parameters
+    ----------
+    X : array_like
+        The matrix of features.
+    y : array_like
+        Vector to fit.
+    n_max : int, default 10
+        Max number of active terms.
+
+    Returns
+    -------
+    list of model
+        List of models with increasing number of active terms.
+    """
+    from sklearn.linear_model import OrthogonalMatchingPursuit
+
+
+    Nf = X.shape[1]
+    active_terms = np.ones(Nf, dtype=bool)
+    models_list = []
+
+    for i in range(n_max):
+        active_terms = np.ones(Nf, dtype=bool)
+        reg = OrthogonalMatchingPursuit(n_nonzero_coefs=i+1, fit_intercept=False, normalize=False)
+        coefs = reg.fit(X, y).coef_
+        active_terms[np.abs(coefs) < 1e-9] = False
+        coefs[np.abs(coefs) < 1e-9] = np.nan
+        error = np.average(np.square(y-np.sum(X[:, active_terms] *
+                                              coefs[active_terms], axis=1)))
+        # Record model
+        models_list.append(model(coefficients=coefs, error=error))
+    return models_list
+
+
+
+def bagging_SSR(X, y, n_estimators=10, n_samples=0.2):
+    """Stepwise Sparse Regressor. See SSR. At each step of the SSR,
+    for n_estimators:
+    1. Rows are sampled with replacement using n_samples.
+    2. A least squares fitting is done on each estimators.
+    3. Resulting coefficients are averaged.
+    4. The active term with the lowest coefficient is removed.
+
+    Parameters
+    ----------
+    X : array_like
+        The matrix of features.
+    y : array_like
+        Vector to fit.
+    n_estimators : int, default 10
+        Number of estimators for the LS regression.
+    n_samples : {int, float}, default 0.2
+        Number of sample to draw. If integer, then this is the number of
+        samples, if float in [0, 1] then it is the portion of the total number
+        of rows.
+
+    Returns
+    -------
+    list of model
+        List of models with decreasing number of active terms.
+    """
+    Nf = X.shape[1]
+    active_terms = np.ones(Nf, dtype=bool)
+    models_list = []
+
+    if type(n_samples) is float:
+        n_samples = int(n_samples*y.size)
+
+    idx = list(np.random.randint(y.size, size=n_samples)
+               for i in range(n_samples))
+
+    for i in range(Nf):
+        coefs = np.zeros(Nf)*np.nan
+        coefs_table = np.zeros((n_estimators, Nf))*np.nan
+        for k in range(n_estimators):
+            coefs_table[k, active_terms] = np.linalg.lstsq(X[idx[k]][:, active_terms],
+                                                           y[idx[k]], rcond=_rcond)[0]
+
+        coefs[active_terms] = np.median(coefs_table[:, active_terms], axis=0)
+        error = np.average(np.square(y-np.sum(X[:, active_terms] *
+                                              coefs[active_terms], axis=1)))
+        # Record model
+        models_list.append(model(coefficients=coefs, error=error))
+
+        # Find and remove smallest coef
+        j = np.nanargmin(np.abs(coefs))
+        # print('Removing term {}.'.format(j))
+        active_terms[j] = False
+    return models_list
 
 
 # def library_bagging_SSR(X, y, n_estimators=10, n_samples=0.2):
