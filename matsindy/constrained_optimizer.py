@@ -1,101 +1,12 @@
 import numpy as np
 from .model import model
-from tqdm import trange
 
 _rcond = None
 
 
-def ridge(X, y, alpha):
-    """Implementation of ridge regression based in explicit formula and
-    numpy.linalg.pinv routine (which means it will also be robust for ordinary
-    least squares). It should be scalable for features of O(100).
-    See https://en.wikipedia.org/wiki/Ridge_regression.
-    Note that for OLS, using the explicit formula
-    >>> beta = np.linalg.pinv(X.T @ X) @ X.T @ y
-    is actually faster (at the time of writing) than calling:
-    >>> beta = np.linalg.lstsq(X, y, rcond=None)[0]
-
-    Parameters
-    ----------
-    X : array_like
-        The matrix of features.
-    y : array_like
-        Vector to fit.
-    alpha : float
-        Ridge regularisation parameter.
-
-    Returns
-    -------
-    beta : ndarray
-        Array of coefficients.
-    """
-    d = X.shape[1]
-    M = X.T @ X + alpha*np.eye(d)
-    invM = np.linalg.pinv(M)
-    return invM @ X.T @ y
-
-
-def relaxed_ridge(X, y, alpha, Xc, yc):
-    """Implementation of ridge regression based in explicit formula and
-    numpy.linalg.pinv routine (which means it will also be robust for ordinary
-    least squares). It should be scalable for features of O(100).
-    See https://en.wikipedia.org/wiki/Ridge_regression
-
-    Parameters
-    ----------
-    X : array_like
-        The matrix of features.
-    y : array_like
-        Vector to fit.
-    alpha : float
-        Ridge regularisation parameter.
-
-    Returns
-    -------
-    beta : ndarray
-        Array of coefficients.
-    """
-    n, d = X.shape
-    X_full = np.vstack((X, Xc))
-    y_full = np.hstack((y, yc))
-    M = X_full.T @ X_full + alpha*np.eye(d)
-    invM = np.linalg.pinv(M)
-    beta_full = invM @ X_full.T @ y_full
-    return beta_full[0:n]
-
-
-def fit_from_indices(X, y, indices, alpha=0.0):
-    """Fit using only features given by index list. Unbiased least squares is
-    used by default, but ridge regularisation can be done by providing a non-
-    zero alpha parameter.
-
-    Parameters
-    ----------
-    X : array_like
-        The matrix of features.
-    y : array_like
-        Vector to fit.
-    indices : list of int
-        List of column indices to use for the fit.
-    alpha : float, default 0.0
-        Ridge regularisation parameter.
-
-    Returns
-    -------
-    model object
-        Model fit.
-    """
-    coefs = np.zeros(X.shape[1])*np.nan
-    coefs[indices] = ridge(X[:, indices], y, alpha)
-    error = np.average(np.square(y-np.sum(X[:, indices] *
-                                          coefs[indices], axis=1)))
-    return model(coefficients=coefs, error=error)
-
-
-def SSR(X, y, rescale=False, alpha=0.0):
+def cSSR(X, y, Xc, yc=None, alpha=1.):
     """Stepwise Sparse Regressor. See Boninsegna, Nüske, and Clementi J. Chem.
-    Phys. 148, 241723 (2018).
-    Ridge regularisation can be applied.
+    Phys. 148, 241723 (2018)
 
     Parameters
     ----------
@@ -103,48 +14,40 @@ def SSR(X, y, rescale=False, alpha=0.0):
         The matrix of features.
     y : array_like
         Vector to fit.
-    rescale : bool, default False
-        If True, will rescale features by their maximum absolute value
-    alpha : float, default 0.0
-        Ridge regularisation parameter.
 
     Returns
     -------
     list of model
         List of models with decreasing number of active terms.
     """
-    print('Running SSR...')
     Nf = X.shape[1]
     active_terms = np.ones(Nf, dtype=bool)
     models_list = []
 
-    if rescale:
-        # Rescale features
-        s = np.max(np.abs(X), axis=0)
-        X = X/s
+    if yc is None:
+        yc = np.zeros(len(Xc))
 
-    for i in trange(Nf):
+    X_full = np.vstack((X, np.sqrt(alpha)*Xc))
+    y_full = np.hstack((y, np.sqrt(alpha)*yc))
+
+    for i in range(Nf):
         coefs = np.zeros(Nf)*np.nan
-        coefs[active_terms] = ridge(X[:, active_terms], y, alpha)
+        coefs[active_terms] = np.linalg.lstsq(X_full[:, active_terms],
+                                              y_full, rcond=_rcond)[0]
         error = np.average(np.square(y-np.sum(X[:, active_terms] *
                                               coefs[active_terms], axis=1)))
         # Record model
-        if rescale:
-            models_list.append(model(coefficients=coefs/s, error=error))
-        else:
-            models_list.append(model(coefficients=coefs, error=error))
+        models_list.append(model(coefficients=coefs, error=error))
 
         # Find and remove smallest coef
         j = np.nanargmin(np.abs(coefs))
         # print('Removing term {}.'.format(j))
         active_terms[j] = False
 
-    if rescale:
-        X = X*s
     return models_list
 
 
-def SSRD(X, y, alpha=0.0):
+def SSRD(X, y):
     """Stepwise Sparse Regressor with Decorrelation. This is a backward
     elimination process. At each step,
     a least square fit is done on active features. Three features are pre-
@@ -160,15 +63,12 @@ def SSRD(X, y, alpha=0.0):
         The matrix of features.
     y : array_like
         Vector to fit.
-    alpha : float, default 0.0
-        Ridge regularisation parameter.
 
     Returns
     -------
     list of model
         List of models with decreasing number of active terms.
     """
-    print('Running SSRD...')
     Nf = X.shape[1]
     active_terms = np.ones(Nf, dtype=bool)
     models_list = []
@@ -178,17 +78,22 @@ def SSRD(X, y, alpha=0.0):
     XtX -= np.diag(np.diag(XtX))
 
     # Starting with full library
-    coefs = ridge(X, y, alpha)
+    coefs = np.linalg.lstsq(X, y, rcond=_rcond)[0]
     error = np.average(np.square(y-np.sum(X*coefs, axis=1)))
 
-    for i in trange(Nf-3):
+    for i in range(Nf-3):
         # Record model
         models_list.append(model(coefficients=coefs, error=error))
 
         # Find highest correlated pair
         beta2 = np.outer(coefs, coefs)
-        ii = np.nanargmax(np.abs(XtX*beta2))
+        ii = np.nanargmin(XtX*beta2)
         (j, k) = np.unravel_index(ii, XtX.shape)
+
+        #beta2[j, k] = np.nan
+        #beta2[k, j] = np.nan
+        #ii = np.nanargmin(XtX*beta2)
+        #(j2, k2) = np.unravel_index(ii, XtX.shape)
 
         # Find the smallest coef
         L = np.nanargmin(np.abs(coefs))
@@ -200,7 +105,8 @@ def SSRD(X, y, alpha=0.0):
         for index in (j, k, L):
             active_terms[index] = False
             coefs1 = np.zeros(Nf)*np.nan
-            coefs1[active_terms] = ridge(X[:, active_terms], y, alpha)
+            coefs1[active_terms] = np.linalg.lstsq(X[:, active_terms],
+                                                   y, rcond=_rcond)[0]
             error1 = np.average(np.square(y-np.sum(X[:, active_terms] *
                                                    coefs1[active_terms],
                                                    axis=1)))
@@ -211,12 +117,54 @@ def SSRD(X, y, alpha=0.0):
             active_terms[index] = True
 
         active_terms[select_index] = False
+        if select_index in (j, k):
+            print(f'Removing anti-correlated atom leading to {np.sum(active_terms)} terms.')
     models_list.append(model(coefficients=coefs, error=error))
 
     return models_list
 
 
-def STLSQ(X, y, threshold=0.01, alpha=0.0):
+def Ridge_SSR(X, y, alpha=0.0001):
+    """Stepwise Sparse Regressor with RIDGE regularisation.
+
+    Parameters
+    ----------
+    X : array_like
+        The matrix of features.
+    y : array_like
+        Vector to fit.
+    alpha : float, default 0.0001
+        Ridge hyperparameter, see:
+        https://scikit-learn.org/stable/modules/linear_model.html#regression
+
+    Returns
+    -------
+    list of model
+        List of models with decreasing number of active terms.
+    """
+    from sklearn.linear_model import Ridge
+    reg = Ridge(alpha=alpha, fit_intercept=False, solver='svd')
+
+    Nf = X.shape[1]
+    active_terms = np.ones(Nf, dtype=bool)
+    models_list = []
+
+    for i in range(Nf):
+        coefs = np.zeros(Nf)*np.nan
+        coefs[active_terms] = reg.fit(X[:, active_terms], y).coef_
+        error = np.average(np.square(y-np.sum(X[:, active_terms] *
+                                              coefs[active_terms], axis=1)))
+        # Record model
+        models_list.append(model(coefficients=coefs, error=error))
+
+        # Find and remove smallest coef
+        j = np.nanargmin(np.abs(coefs))
+        # print('Removing term {}.'.format(j))
+        active_terms[j] = False
+    return models_list
+
+
+def STLSQ(X, y, threshold=0.01):
     """Sequential thresholded least-squares.
     See https://doi.org/10.1073/pnas.1517384113
 
@@ -229,8 +177,6 @@ def STLSQ(X, y, threshold=0.01, alpha=0.0):
     threshold : float, default 0.01
         Threshold value. Note that no assumption is made on the scale of each
         feature.
-    alpha : float, default 0.0
-        Ridge regularisation parameter.
 
     Returns
     -------
@@ -240,7 +186,7 @@ def STLSQ(X, y, threshold=0.01, alpha=0.0):
     Nf = X.shape[1]
 
     # Initial guess: least squares on full library
-    coefs = ridge(X, y, alpha)
+    coefs = np.linalg.lstsq(X, y, rcond=_rcond)[0]
     error = np.average(np.square(y-np.sum(X*coefs, axis=1)))
 
     active_terms = np.ones(Nf, dtype=bool)
@@ -250,15 +196,112 @@ def STLSQ(X, y, threshold=0.01, alpha=0.0):
 
         # Re-fit
         coefs = np.zeros(Nf)*np.nan
-        coefs[active_terms] = ridge(X[:, active_terms], y, alpha)
+        coefs[active_terms] = np.linalg.lstsq(X[:, active_terms],
+                                              y, rcond=_rcond)[0]
         error = np.average(np.square(y-np.sum(X[:, active_terms] *
                                               coefs[active_terms], axis=1)))
 
     return model(coefficients=coefs, error=error)
 
 
-def SBE(X, y, n_test=2, alpha=0.0):
-    """Stepwise backward elimination. At each step, select randomly two or more
+def Ridge_STLSQ(X, y, threshold=0.01, alpha=0.0001):
+    """Sequential thresholded least-squares with RIDGE regularisation.
+    See https://doi.org/10.1073/pnas.1517384113
+
+    Parameters
+    ----------
+    X : array_like
+        The matrix of features.
+    y : array_like
+        Vector to fit.
+    threshold : float, default 0.01
+        Threshold value. Note that no assumption is made on the scale of each
+        feature.
+    alpha : float, default 0.0001
+        Ridge hyperparameter, see:
+        https://scikit-learn.org/stable/modules/linear_model.html#regression
+
+    Returns
+    -------
+    model
+        model selected and fit with a least squares.
+    """
+    from sklearn.linear_model import Ridge
+    reg = Ridge(alpha=alpha, fit_intercept=False, solver='svd')
+
+    Nf = X.shape[1]
+
+    # Initial guess: least squares on full library
+    coefs = reg.fit(X, y).coef_
+
+    active_terms = np.ones(Nf, dtype=bool)
+    while any(np.abs(coefs) < threshold):
+        # kill active terms below `threshold`
+        active_terms[np.abs(coefs) < threshold] = False
+
+        # Re-fit
+        coefs = np.zeros(Nf)*np.nan
+        coefs[active_terms] = reg.fit(X[:, active_terms], y).coef_
+
+    # Re-fit with least squares
+    coefs[active_terms] = np.linalg.lstsq(X[:, active_terms], y, rcond=None)[0]
+    error = np.average(np.square(y-np.sum(X[:, active_terms] *
+                                          coefs[active_terms], axis=1)))
+
+    return model(coefficients=coefs, error=error)
+
+
+def backward_elimination(X, y):
+    """Stepwise backward elimination.
+
+    Parameters
+    ----------
+    X : array_like
+        The matrix of features.
+    y : array_like
+        Vector to fit.
+
+    Returns
+    -------
+    list of model
+        List of models with decreasing number of active terms.
+    """
+    from tqdm import trange
+
+    Nf = X.shape[1]
+    active_terms = np.ones(Nf, dtype=bool)
+    models_list = []
+    features_id = np.arange(Nf)
+
+    # Start from ordianry least squares
+    coefs = np.linalg.lstsq(X[:, active_terms], y, rcond=_rcond)[0]
+    error = np.average(np.square(y-np.sum(X[:, active_terms]*coefs, axis=1)))
+    for i in trange(Nf):
+        # Record model
+        models_list.append(model(coefficients=coefs, error=error))
+
+        coefs_table = np.zeros((Nf, Nf))*np.nan
+        errors = np.zeros(Nf)*np.nan
+
+        # Try and remove one active term
+        for k in features_id[active_terms]:
+            active_terms[k] = False
+            coefs_table[k, active_terms] = np.linalg.lstsq(X[:, active_terms],
+                                                           y, rcond=_rcond)[0]
+            errors[k] = np.average(np.square(y-np.sum(X[:, active_terms] *
+                                             coefs_table[k, active_terms],
+                                             axis=1)))
+            active_terms[k] = True
+        error = np.nanmin(errors)
+        j = np.nanargmin(errors)
+        coefs = coefs_table[j]
+        # Find and remove smallest error
+        active_terms[j] = False
+    return models_list
+
+
+def cSBE(X, y, Xc, yc=None, alpha=1., n_test=2):
+    """Stepwise backward elimination. At each step, select randomly two
     features and remove the one leading to smallest error increase.
 
     Parameters
@@ -267,25 +310,28 @@ def SBE(X, y, n_test=2, alpha=0.0):
         The matrix of features.
     y : array_like
         Vector to fit.
-    n_test : int, default 2
-        Number of features to select for testing.
-    alpha : float, default 0.0
-        Ridge regularisation parameter.
 
     Returns
     -------
     list of model
         List of models with decreasing number of active terms.
     """
+    from tqdm import trange
 
     Nf = X.shape[1]
     active_terms = np.ones(Nf, dtype=bool)
     models_list = []
     features_id = np.arange(Nf)
 
+    if yc is None:
+        yc = np.zeros(len(Xc))
+
+    X_full = np.vstack((X, np.sqrt(alpha)*Xc))
+    y_full = np.hstack((y, np.sqrt(alpha)*yc))
+
     # Start from ordianry least squares
-    coefs = ridge(X, y, alpha)
-    error = np.average(np.square(y-np.sum(X*coefs, axis=1)))
+    coefs = np.linalg.lstsq(X_full[:, active_terms], y_full, rcond=_rcond)[0]
+    error = np.average(np.square(y-np.sum(X[:, active_terms]*coefs, axis=1)))
     for i in trange(Nf-1):
         # Record model
         models_list.append(model(coefficients=coefs, error=error))
@@ -296,7 +342,8 @@ def SBE(X, y, n_test=2, alpha=0.0):
                                   size=min(Nf-1-i, n_test), replace=False):
             active_terms[k] = False
             coefs1 = np.zeros(Nf)*np.nan
-            coefs1[active_terms] = ridge(X[:, active_terms], y, alpha)
+            coefs1[active_terms] = np.linalg.lstsq(X_full[:, active_terms],
+                                                   y_full, rcond=_rcond)[0]
             error1 = np.average(np.square(y-np.sum(X[:, active_terms] *
                                                    coefs1[active_terms],
                                                    axis=1)))
@@ -311,65 +358,9 @@ def SBE(X, y, n_test=2, alpha=0.0):
     return models_list
 
 
-# def SR3(X, y, alpha=0.0, kappa=0.0):
-#     """Sparse Relaxed Regularized Regression.
-#     See https://doi.org/10.1109/ACCESS.2018.2886528
-#
-#     Parameters
-#     ----------
-#     X : array_like
-#         The matrix of features.
-#     y : array_like
-#         Vector to fit.
-#     alpha : float, default 0.0
-#         Ridge hyperparameter.
-#     kappa : float, default 0.0001
-#         Relaxation parameter (partial Ridge).
-#
-#     Returns
-#     -------
-#     list of model
-#         List of models with decreasing number of active terms.
-#     """
-#     from sklearn.linear_model import Lasso
-#     reg = Lasso(alpha=alpha, fit_intercept=False)
-#
-#     d = X.shape[1]
-#     X_block = np.vstack((X, np.sqrt(kappa)*np.eye(d)))
-#     u, s, vT = np.linalg.svd(X_block, full_matrices=False)
-#     w = np.zeros(d)
-#
-#     for i in range(100):
-#         # Assemble right-hand side
-#         y_block = np.hstack((y, np.sqrt(kappa)*w))
-#
-#         # Least squares using pre-computed SVD
-#         z = (u.T @ y_block)/s
-#         xi = np.sum(vT*z[:, None], axis=0)
-#
-#         # Sparse regression of w
-#         w1 = reg.fit(np.eye(d), xi).coef_
-#
-#         # Change from previous iter
-#         dw = np.average(np.square(w1-w))
-#         w = w1
-#         if dw < 1e-6:
-#             break
-#
-#     error = np.average(np.square(y-np.sum(X*w, axis=1)))
-#
-#     w[np.abs(w) < 1e-12] = np.nan
-#     w[~np.isnan(w)] = np.linalg.lstsq(X[:, ~np.isnan(w)], y, rcond=None)[0]
-#     error = np.average(np.square(y-np.sum(X[:, ~np.isnan(w)] *
-#                                           w[~np.isnan(w)], axis=1)))
-#
-#     return model(coefficients=w, error=error)
-
-
-def SSR_var(X, y, alpha=0.0, Xc=None, yc=None):
+def SR3(X, y, alpha=1e-4, kappa=1e-4):
     """Sparse Relaxed Regularized Regression.
     See https://doi.org/10.1109/ACCESS.2018.2886528
-    Remove the term with highest uncertainty.
 
     Parameters
     ----------
@@ -377,271 +368,50 @@ def SSR_var(X, y, alpha=0.0, Xc=None, yc=None):
         The matrix of features.
     y : array_like
         Vector to fit.
-    alpha : float, default 0.0
-        Ridge regularisation parameter.
-    Xc : ndarray
-        Constraint matrix
-    yc : ndarray
-        Constraint target
+    alpha : float, default 0.0001
+        Lasso hyperparameter.
+    kappa : float, default 0.0001
+        Relaxation parameter (partial Ridge).
 
     Returns
     -------
     list of model
         List of models with decreasing number of active terms.
     """
-    print('Running SSR_var...')
-    Nf = X.shape[1]
-    active_terms = np.ones(Nf, dtype=bool)
-    models_list = []
+    from sklearn.linear_model import Lasso
+    reg = Lasso(alpha=alpha, fit_intercept=False)
 
-    for i in trange(Nf):
-        d = np.sum(active_terms)
-        M = X[:, active_terms].T @ X[:, active_terms] + alpha*np.eye(d)
-        invM = np.linalg.pinv(M)
-        beta = invM @ X[:, active_terms].T @ y
+    d = X.shape[1]
+    X_block = np.vstack((X, np.sqrt(kappa)*np.eye(d)))
+    u, s, vT = np.linalg.svd(X_block, full_matrices=False)
+    w = np.zeros(d)
 
-        if Xc is not None:
-            if Xc.ndim == 1:
-                Xc = Xc.reshape((1, Xc.size))
-            C = Xc[:, active_terms]
-            if yc is None:
-                yc = np.zeros(len(Xc))
-            res = C @ beta - yc
-            beta += - invM @ C.T @ np.linalg.pinv(C @ invM @ C.T) @ res
+    for i in range(100):
+        # Assemble right-hand side
+        y_block = np.hstack((y, np.sqrt(kappa)*w))
 
-            # beta = relaxed_ridge(X[:, active_terms], y, alpha, C, yc)
+        # Least squares using pre-computed SVD
+        z = (u.T @ y_block)/s
+        xi = np.sum(vT*z[:, None], axis=0)
 
-        coefs = np.zeros(Nf)*np.nan
-        coefs[active_terms] = beta
+        # Sparse regression of w
+        w1 = reg.fit(np.eye(d), xi).coef_
 
-        error = np.average(np.square(y-np.sum(X[:, active_terms] *
-                                              coefs[active_terms], axis=1)))
-        # Record model
-        models_list.append(model(coefficients=coefs, error=error))
+        # Change from previous iter
+        dw = np.average(np.square(w1-w))
+        w = w1
+        if dw < 1e-6:
+            break
 
-        # Find and remove smallest coef based on (biased) variance of beta
-        betavar = np.zeros(Nf)*np.nan
-        invXtX = np.linalg.pinv(X[:, active_terms].T @ X[:, active_terms])
-        betavar[active_terms] = np.diag(invXtX)/np.square(beta+1e-15)
+    error = np.average(np.square(y-np.sum(X*w, axis=1)))
 
-        j = np.nanargmax(betavar)
+    w[np.abs(w) < 1e-12] = np.nan
+    w[~np.isnan(w)] = np.linalg.lstsq(X[:, ~np.isnan(w)], y, rcond=None)[0]
+    error = np.average(np.square(y-np.sum(X[:, ~np.isnan(w)] *
+                                          w[~np.isnan(w)], axis=1)))
 
-        if Xc is not None:
-            j1 = j
-            for k in range(np.sum(active_terms)-1):
-                # Try if constraint is still satitsfied:
-                active_terms[j1] = False
-                C2 = Xc[:, active_terms]
-                dof = np.sum(np.abs(C2) > 0, axis=1) + (np.abs(yc) > 0)
-                if np.all(dof > 1):
-                    # Exit loop
-                    j = j1
-                    break
-                else:
-                    active_terms[j1] = True
-                    # Exclude from search
-                    betavar[j1] = np.nan
-                    j1 = np.nanargmax(betavar)
-            if k == np.sum(active_terms)-2:
-                print("Warning: could not satisfy constraint.")
+    return model(coefficients=w, error=error)
 
-        active_terms[j] = False
-
-    return models_list
-
-
-def SSR_varD(X, y, alpha=0.0001, Xc=None, yc=None):
-    """Sparse Relaxed Regularized Regression.
-    See https://doi.org/10.1109/ACCESS.2018.2886528
-    Remove the term with highest uncertainty.
-    Remove correlated items
-
-    Parameters
-    ----------
-    X : array_like
-        The matrix of features.
-    y : array_like
-        Vector to fit.
-
-    Returns
-    -------
-    list of model
-        List of models with decreasing number of active terms.
-    """
-    print('Running SSR_var...')
-    Nf = X.shape[1]
-    active_terms = np.ones(Nf, dtype=bool)
-    models_list = []
-
-    for i in trange(Nf):
-        d = np.sum(active_terms)
-        M = X[:, active_terms].T @ X[:, active_terms] + alpha*np.eye(d)
-        invXtX = np.linalg.pinv(M)
-        beta = invXtX @ X[:, active_terms].T @ y
-
-        coefs = np.zeros(Nf)*np.nan
-        coefs[active_terms] = beta
-        if Xc is not None:
-            if Xc.ndim == 1:
-                Xc = Xc.reshape((1, Xc.size))
-            C = Xc[:, active_terms]
-            if yc is None:
-                yc = np.zeros(len(Xc))
-            res = C @ beta - yc
-            coefs[active_terms] += - invXtX @ C.T @ np.linalg.pinv(C @ invXtX @
-                                                                   C.T) @ res
-        error = np.average(np.square(y-np.sum(X[:, active_terms] *
-                                              coefs[active_terms], axis=1)))
-        # Record model
-        models_list.append(model(coefficients=coefs, error=error))
-
-        # Find and remove smallest coef based on (biased) variance of beta
-        betavar = np.zeros((Nf, Nf))*np.nan
-        dd = invXtX/np.outer(beta, beta)
-        dd = -dd + np.diag(np.diag(dd))
-        betavar[np.outer(active_terms, active_terms)] = dd.flatten()
-        ii = np.nanargmax(betavar)
-        (j, k) = np.unravel_index(ii, (Nf, Nf))
-        if j == k:
-            # Remove coefficient of high variance
-            active_terms[j] = False
-            print(f'Removing term {j}.')
-        else:
-            # Remove high correlation
-            if betavar[j, j] > betavar.reshape((Nf, Nf))[k, k]:
-                active_terms[j] = False
-                print(f'Removing correlated term {j}.')
-            else:
-                active_terms[k] = False
-                print(f'Removing correlated term {k}.')
-
-    return models_list
-
-
-def SSR_var_softmax(X, y, alpha=0.0001, Xc=None, yc=None):
-    """Sparse Relaxed Regularized Regression.
-    See https://doi.org/10.1109/ACCESS.2018.2886528
-    Remove the term with highest uncertainty.
-
-    Parameters
-    ----------
-    X : array_like
-        The matrix of features.
-    y : array_like
-        Vector to fit.
-
-    Returns
-    -------
-    list of model
-        List of models with decreasing number of active terms.
-    """
-    print('Running SSR var softmax...')
-    Nf = X.shape[1]
-    active_terms = np.ones(Nf, dtype=bool)
-    models_list = []
-
-    for i in trange(Nf):
-        d = np.sum(active_terms)
-        M = X[:, active_terms].T @ X[:, active_terms] + alpha*np.eye(d)
-        invXtX = np.linalg.pinv(M)
-        beta = invXtX @ X[:, active_terms].T @ y
-
-        if Xc is not None:
-            if Xc.ndim == 1:
-                Xc = Xc.reshape((1, Xc.size))
-            C = Xc[:, active_terms]
-            if yc is None:
-                yc = np.zeros(len(Xc))
-            res = C @ beta - yc
-            beta += - invXtX @ C.T @ np.linalg.pinv(C @ invXtX @ C.T) @ res
-        coefs = np.zeros(Nf)*np.nan
-        coefs[active_terms] = beta
-        error = np.average(np.square(y-np.sum(X[:, active_terms] *
-                                              coefs[active_terms], axis=1)))
-        # Record model
-        models_list.append(model(coefficients=coefs, error=error))
-
-        # Find and remove smallest coef based on (biased) variance of beta
-        score = np.square(beta)/(error*np.diag(invXtX))
-        feature_index = np.arange(Nf)
-        # Proba density
-
-        p = np.exp(-np.sqrt(np.abs(score)))
-        #p = 1./(np.sqrt(np.abs(score)) + 1e-15)
-        p = p/np.sum(p)
-        #print(np.min(p), np.max(p))
-        if any(np.isnan(p)):
-            print(score)
-
-        j = np.random.choice(feature_index[active_terms], p=p)
-        # print('Removing term {}.'.format(j))
-        active_terms[j] = False
-
-    return models_list
-
-
-def STLSQ_p(X, y, p_value=0.05, alpha=0.0001):
-    """Sequential thresholded least-squares.
-    See https://doi.org/10.1073/pnas.1517384113
-    At each step, remove feature with high p_value.
-
-    Parameters
-    ----------
-    X : array_like
-        The matrix of features.
-    y : array_like
-        Vector to fit.
-    p_value : float, default 0.05
-        Threshold value. Note that no assumption is made on the scale of each
-        feature.
-
-    Returns
-    -------
-    model
-        Model selected and fit.
-    """
-    #from scipy.stats import t
-    # Explicit least squares with ridge regularisation
-    Nf = X.shape[1]
-    M = X.T @ X + alpha*np.eye(Nf)
-    invXtX = np.linalg.pinv(M)
-    beta = invXtX @ X.T @ y
-    error = np.average(np.square(y-np.sum(X*beta, axis=1)))
-    # t stat
-    t0 = np.abs(beta)/np.sqrt(error*np.diag(invXtX))
-    # Degrees of freedom
-    #df = len(X)-Nf-1
-    #p = 2*t.sf(t0, df)
-    p = 1./t0
-
-    models_list = []
-    models_list.append(model(coefficients=beta, error=error))
-
-    active_terms = np.ones(Nf, dtype=bool)
-    while any(p > p_value*np.sum(active_terms)/Nf):
-        # kill active terms below `threshold`
-        active_terms[p > p_value*np.sum(active_terms)/Nf] = False
-
-        # Re-fit
-        d = np.sum(active_terms)
-        M = X[:, active_terms].T @ X[:, active_terms] + alpha*np.eye(d)
-        invXtX = np.linalg.pinv(M)
-        beta = invXtX @ X[:, active_terms].T @ y
-
-        coefs = np.zeros(Nf)*np.nan
-        coefs[active_terms] = beta
-        error = np.average(np.square(y-np.sum(X[:, active_terms]*beta,
-                                              axis=1)))
-        models_list.append(model(coefficients=coefs, error=error))
-        # t stat
-        t0 = np.abs(beta)/np.sqrt(error*np.diag(invXtX))
-        # Degrees of freedom
-        #df = len(X)-d-1
-        p = np.zeros(Nf)*np.nan
-        p[active_terms] = 1./t0
-        print(np.nanmax(p))
-
-    return models_list
 
 # def bagging_SSR(X, y, n_estimators=10, n_samples=0.2):
 #     """Stepwise Sparse Regressor. See SSR. At each step of the SSR,

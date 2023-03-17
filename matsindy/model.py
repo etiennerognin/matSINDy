@@ -65,9 +65,9 @@ class model:
                                              library.feature_names)):
             if not np.isnan(coef):
                 if self.coefstd is None:
-                    print("({})\t{:+.4f} {}".format(i, coef, name))
+                    print("({})\t{:+.6f} {}".format(i, coef, name))
                 else:
-                    print("({})\t{:+.4f} ±{:.4f} {}".format(i, coef,
+                    print("({})\t{:+.6f} ±{:.6f} {}".format(i, coef,
                                                             self.coefstd[i],
                                                             name))
 

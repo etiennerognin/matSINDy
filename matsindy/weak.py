@@ -19,6 +19,9 @@ def make_window(width, which='rectangular'):
     if which=='polynomial2':
         x = np.arange(width)
         window = x**2*(width-x-1)**2
+    if which=='exponential':
+        x = np.arange(width)
+        window = np.exp(3*x/width-3)-np.exp(-3)
 
     # Post cleaning
     window[0] = 0
@@ -38,10 +41,16 @@ def weak_form(observable, dt, window):
 
     Nout = 2+int((Nt-2*(width-1))/(width-2))
 
-    out = np.empty((Nout, 3, 3))
-    for i in range(Nout):
-        i_start = i*(width-2)
-        out[i] = np.sum(window[:, None, None]*observable[i_start:i_start+width], axis=0)*dt
+    if observable.ndim == 1:
+        out = np.empty(Nout)
+        for i in range(Nout):
+            i_start = i*(width-2)
+            out[i] = np.sum(window*observable[i_start:i_start+width], axis=0)*dt
+    else:
+        out = np.empty((Nout, 3, 3))
+        for i in range(Nout):
+            i_start = i*(width-2)
+            out[i] = np.sum(window[:, None, None]*observable[i_start:i_start+width], axis=0)*dt
     return out
 
 def weak_diff(observable, dt, window):
