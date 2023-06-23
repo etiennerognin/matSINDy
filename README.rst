@@ -4,13 +4,15 @@ matSINDy
 **matrix Sparse Identification of Non-linear Dynamics** Python package 
 
 **SINDy** is a machine learning method to identify symbolic differential
-equations of dynamical systems from time series data. The main existing
+equations of dynamical systems from time series data [#]_. The main existing
 package is pysindy_, for scalar coordinates.
 
 .. _pysindy: https://github.com/dynamicslab/pysindy
 
 In matSINDy we extend this approach to symbolic variables which are dense, 
-low-dimension (typically 3 by 3) **matrices**.
+low-dimension (typically 3 by 3) **matrices**. It works as follows: from a time
+series of a matrix :math:`A(t)` and forcing :math:`B(t)` (which can also be a matrix),
+we compute :math:`\dot A(t)`
 
 >> Work in progress!
 
@@ -65,3 +67,4 @@ pysindy_
 References
 ----------
 
+.. [#] S Brunton, J Proctor, and J Kutz *Discovering governing equations from data by sparse identification of nonlinear dynamical systems* (https://www.pnas.org/doi/10.1073/pnas.1517384113)
