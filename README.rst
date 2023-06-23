@@ -16,11 +16,11 @@ we compute the time derivative of the series, $\\dot A$, and an arbitrary set of
 features $f(A, B)$ (polynomial features for example). The goal is to find a sparse
 regression:
 
-$$ \\dot A = \\sum_i f_i(A, B) $$
+$$ \\dot A = \\sum_i \\beta_i f_i(A, B) $$
 
 so that the data is described by the model, and the number of features is small.
 
->> Work in progress!
+>> ⚠️ Work in progress!
 
 
 
