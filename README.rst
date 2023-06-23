@@ -20,6 +20,16 @@ $$ \\dot A = \\sum_i \\beta_i f_i(A, B) $$
 
 so that the data is described by the model, and the number of features is small.
 
+For example, in polymer physics, we often describe the evolution of the stress
+tensor, $S$, by a *constitutive* equation of the form:
+
+$$ \\dot S = \\sum_i \\beta_i f_i(S, \\nabla U) $$
+
+where $\\nabla U$ is the velocity gradient tensor. The `upper-convected Maxwell model`_
+is a concrete example. What other constitutive laws can we find from data?...
+
+.. _`upper-convected Maxwell model`: https://en.wikipedia.org/wiki/Upper-convected_Maxwell_model
+
 ⚠️ Work in progress!
 
 
