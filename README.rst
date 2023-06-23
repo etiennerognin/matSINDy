@@ -20,7 +20,7 @@ $$ \\dot A = \\sum_i \\beta_i f_i(A, B) $$
 
 so that the data is described by the model, and the number of features is small.
 
->> ⚠️ Work in progress!
+⚠️ Work in progress!
 
 
 
