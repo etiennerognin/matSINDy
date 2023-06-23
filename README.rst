@@ -11,8 +11,8 @@ package is pysindy_, for scalar coordinates.
 
 In matSINDy we extend this approach to symbolic variables which are dense, 
 low-dimension (typically 3 by 3) **matrices**. It works as follows: from a time
-series of a matrix :math:`A(t)` and forcing :math:`B(t)` (which can also be a matrix),
-we compute :math:`\dot A(t)`
+series of a matrix $A(t)$ and forcing $B(t)$ (which can also be a matrix),
+we compute $\dot A(t)$
 
 >> Work in progress!
 
