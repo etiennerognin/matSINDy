@@ -31,7 +31,7 @@ is a concrete example. What other constitutive laws can we find from data?...
 .. _`upper-convected Maxwell model`: https://en.wikipedia.org/wiki/Upper-convected_Maxwell_model
 
 Because computing the time derivative of a noisy input amplifies the noise, we prefer
-to work with a *weak formulation* of the problem: the input and features are projected
+to work with a *weak formulation* of the problem [#]_: the input and features are projected
 onto a set of test functions. This is equivalent to linear filtering followed by
 downsampling. The complete pipeline is represented in the figure below:
 
@@ -93,4 +93,5 @@ pysindy_
 References
 ----------
 
-.. [#] S Brunton, J Proctor, and J Kutz *Discovering governing equations from data by sparse identification of nonlinear dynamical systems* (https://www.pnas.org/doi/10.1073/pnas.1517384113)
+.. [#] S Brunton, J Proctor, and J Kutz, *Discovering governing equations from data by sparse identification of nonlinear dynamical systems* (https://www.pnas.org/doi/10.1073/pnas.1517384113)
+.. [#] D Messenger, D Bortz, *Weak SINDy: Galerkin-Based Data-Driven Model Selection* (https://arxiv.org/abs/2005.04339)
