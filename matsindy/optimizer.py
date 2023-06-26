@@ -5,7 +5,7 @@ from tqdm import trange
 _rcond = None
 
 
-def ridge(X, y, alpha):
+def ridge(X, y, alpha=0):
     """Implementation of ridge regression based in explicit formula and
     numpy.linalg.pinv routine (which means it will also be robust for ordinary
     least squares). It should be scalable for features of O(100).
@@ -30,7 +30,10 @@ def ridge(X, y, alpha):
         Array of coefficients.
     """
     d = X.shape[1]
-    M = X.T @ X + alpha*np.eye(d)
+    if alpha:
+        M = X.T @ X + alpha*np.eye(d)
+    else:
+        M = X.T @ X
     invM = np.linalg.pinv(M)
     return invM @ X.T @ y
 

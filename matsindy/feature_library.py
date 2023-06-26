@@ -9,12 +9,12 @@ class FeatureLibrary:
     output_kind : {'scalar', 'matrix'}
         Type of data returned by the FeatureLibrary functions.
     feature_functions : list of function <lambda>
-        List of callable feature functions. They should a dictionary as
-        argument and return an ndarray according to `output_kind`.
+        List of callable feature functions. They should take a dictionary as
+        argument and return an ndarray with shape according to `output_kind`.
     feature_names : list of str
         List of corresponding feature names
     variable_names : set of str
-        Set of variable names wihch will be called by the feature functions.
+        Set of variable names which will be called by the feature functions.
     transpose_map : dict, default None
         Transpose map with key->value dictionary where key is a variable name
         string and value is:
@@ -33,7 +33,7 @@ class FeatureLibrary:
     degrees : dict of dict
         Dictionary with {feature_name: {variable_name: degree}}. Indicate the
         degree of each variable in a feature. This entry is filled by
-        FeatureLibrary generators.
+        polynomial FeatureLibrary generators.
     """
     MATMUL_SYMBOL = '∘'
     T_SYMBOL = 'ᵀ'
@@ -445,13 +445,15 @@ class FeatureLibrary:
         """
         remove = []
         for feature_name, degrees in self.degrees.items():
-            for var, degree in degrees.items():
-                try:
-                    if degree > max_degrees[var]:
-                        remove.append(feature_name)
-                        break
-                except KeyError:
-                    pass
+            for max_var, max_degree in max_degrees.items():
+                effective_degree = degrees.get(max_var, 0)
+                if self.transpose_map[max_var] != max_var:
+                    effective_degree += degrees.get(self.transpose_map[max_var], 0)
+                #print(f'Feature: {feature_name}, Var: {max_var}, effective degree: {effective_degree}, max:{max_degree}')
+                if effective_degree > max_degree:
+                    remove.append(feature_name)
+                    break
+
         for feature_name in remove:
             try:
                 self.remove_by_name(feature_name)
