@@ -36,7 +36,8 @@ onto a set of test functions. This is equivalent to linear filtering followed by
 downsampling. The complete pipeline is represented in the figure below:
 
 .. image:: docs/data.png
-  :alt: Data processing pipeline
+    :align: center
+    :alt: Data processing pipeline
 
 Of course, the models should be cross-validated, as shown in the examples notebooks.
 
