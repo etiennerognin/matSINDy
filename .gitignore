@@ -8,9 +8,8 @@ docs/_templates
 docs/_refs
 
 # Examples data
-examples/inputs
-examples/outputs
-examples/dataset
+
+#examples/dataset
 
 **/*cache*
 
