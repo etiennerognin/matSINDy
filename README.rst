@@ -26,7 +26,7 @@ tensor, $\\tau$, by a *constitutive* equation of the form:
 $$ \\dot \\tau = \\sum_i \\beta_i f_i(\\tau, \\nabla U) $$
 
 where $\\nabla U$ is the velocity gradient tensor. The `upper-convected Maxwell model`_
-is a concrete example. What other constitutive laws can we find from data?...
+is a concrete example. What other constitutive laws can we find from data [#]?...
 
 .. _`upper-convected Maxwell model`: https://en.wikipedia.org/wiki/Upper-convected_Maxwell_model
 
@@ -96,3 +96,4 @@ References
 
 .. [#] S Brunton, J Proctor, and J Kutz, *Discovering governing equations from data by sparse identification of nonlinear dynamical systems* (https://www.pnas.org/doi/10.1073/pnas.1517384113)
 .. [#] D Messenger, D Bortz, *Weak SINDy: Galerkin-Based Data-Driven Model Selection* (https://arxiv.org/abs/2005.04339)
+.. [#] N Seryo *Learning the constitutive relation of polymeric flows with memory* (https://journals.aps.org/prresearch/abstract/10.1103/PhysRevResearch.2.033107)
