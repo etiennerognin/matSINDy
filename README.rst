@@ -95,5 +95,5 @@ References
 ----------
 
 .. [#] S Brunton, J Proctor, and J Kutz, *Discovering governing equations from data by sparse identification of nonlinear dynamical systems* (https://www.pnas.org/doi/10.1073/pnas.1517384113)
-.. [#] D Messenger, D Bortz, *Weak SINDy: Galerkin-Based Data-Driven Model Selection* (https://arxiv.org/abs/2005.04339)
 .. [#] N Seryo *Learning the constitutive relation of polymeric flows with memory* (https://journals.aps.org/prresearch/abstract/10.1103/PhysRevResearch.2.033107)
+.. [#] D Messenger, D Bortz, *Weak SINDy: Galerkin-Based Data-Driven Model Selection* (https://arxiv.org/abs/2005.04339)
