@@ -26,7 +26,7 @@ tensor, $\\tau$, by a *constitutive* equation of the form:
 $$ \\dot \\tau = \\sum_i \\beta_i f_i(\\tau, \\nabla U) $$
 
 where $\\nabla U$ is the velocity gradient tensor. The `upper-convected Maxwell model`_
-is a concrete example. What other constitutive laws can we find from data [#]?...
+is a concrete example. What other constitutive laws can we find from data [#]_?...
 
 .. _`upper-convected Maxwell model`: https://en.wikipedia.org/wiki/Upper-convected_Maxwell_model
 
