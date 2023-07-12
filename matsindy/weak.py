@@ -1,27 +1,42 @@
 import numpy as np
 
+
 def make_window(width, which='rectangular'):
-    # Test function for the weak formulation
-    # --------------------------------------
-    # width including zeros (zeros are needed for integration/differentation consistancy)
+    """Create test functions for the weak formulation
+
+    Parameters
+    ----------
+    width : int
+        Width of the support of the test function. Note that leading and
+        trailing zeros will be added.
+    which : {'rectangular', 'triangular', 'Gaussian', 'polynomial1',
+              'polynomial2', 'exponential'}
+        Shape of test function (see source)
+
+    Returns
+    -------
+    ndarray size (width+2,)
+    """
     width += 2
 
-    if which=='rectangular':
+    if which == 'rectangular':
         window = np.ones(width)
-    if which=='triangular':
+    elif which == 'triangular':
         window = np.bartlett(width)
-    if which=='Gaussian':
+    elif which == 'Gaussian':
         x = np.arange(width)
-        window = np.exp(-(x+0.5-width/2)**2/(0.02*width**2))# - np.exp(-(0.5-width/2)**2/(0.005*width**2))
-    if which=='polynomial1':
+        window = np.exp(-(x+0.5-width/2)**2/(0.02*width**2))
+    elif which == 'polynomial1':
         x = np.arange(width)
         window = x**1*(width-x-1)**1
-    if which=='polynomial2':
+    elif which == 'polynomial2':
         x = np.arange(width)
         window = x**2*(width-x-1)**2
-    if which=='exponential':
+    elif which == 'exponential':
         x = np.arange(width)
         window = np.exp(3*x/width-3)-np.exp(-3)
+    else:
+        raise NotImplementedError
 
     # Post cleaning
     window[0] = 0
